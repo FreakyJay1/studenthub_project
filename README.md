@@ -98,27 +98,27 @@ StudentHub provides a personalized dashboard, unified course management, a campu
     *   Install backend dependencies:
 
         bash
-        pip install -r backend/requirements.txt
+        pip install -r requirements.txt
         
 
-    *   Configure the database in backend/StudentHub/settings.py.
+    *   Configure the database in backend/studenthub_project/studenthub_project/settings.py.
 
     *   Run migrations:
 
         bash
-        python backend/manage.py migrate
+        python backend/studenthub_project/manage.py migrate
         
 
     *   Create a superuser:
 
         bash
-        python backend/manage.py createsuperuser
+        python backend/studenthub_project/manage.py createsuperuser
         
 
     *   Run the development server:
 
         bash
-        python backend/manage.py runserver
+        python backend/studenthub_project/manage.py runserver
         
 
 3. *Frontend Setup:*
