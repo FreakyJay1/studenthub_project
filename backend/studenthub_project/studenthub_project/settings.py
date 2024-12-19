@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'resources',
     'studygroups',
     'messaging',
+    'channels'
     # 'django.contrib.migrations',
 ]
 
@@ -61,6 +62,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'studenthub_project.wsgi.application'
+
+ASGI_APPLICATION = 'studenthub_project.asgi.application'
 
 # Database (use dummy engine since you're using PyMongo directly)
 DATABASES = {
@@ -100,3 +103,13 @@ STATIC_URL = '/static/'  # Or your preferred static URL
 
 # Default primary key field type (leave as is unless you have specific needs)
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Channel layer configuration (for Channels)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [config('REDIS_URL', default='redis://localhost:6379')],
+        },
+    },
+}
