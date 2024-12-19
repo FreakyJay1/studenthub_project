@@ -4,11 +4,17 @@ from django.contrib.auth import get_user_model
 
 class EmailBackend(ModelBackend):
     def authenticate(self, request, username = None, password = None, **kwargs):
-        user = get_user_model
-        user = get_user_by_email(username)
-        if user is not None:
-            django_user = user.objects.filter(email=username).first()
-            if django_user and django_user.check_password(password):
-                return django_user
-        
+        User = get_user_model
+        try:
+            user_doc = get_user_by_email(username)
+            if user_doc:
+                django_user = User.objects.get(email=user_doc['email'])
+                if django_user.check_password(password):
+                    return django_user
+        except User.DoesNotExist:
+            return None
+        except Exception as e:
+            print(f"An error occurred during authentication: {e}")
+            return None
+
         return None

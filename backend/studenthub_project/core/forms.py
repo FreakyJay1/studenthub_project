@@ -3,7 +3,12 @@ from django.contrib.auth.forms import UserCreationForm
 from .models import User
 
 class RegistrationForm(UserCreationForm):
-    email = forms.EmailField(required=True)
+    email = forms.EmailField(required=True, label="Email Address")
+    first_name = forms.CharField(required=True)
+    last_name = forms.CharField(required=True)
+    favorite_programming_languages = forms.CharField(
+        required=False, widget=forms.TextInput(attrs={'placeholder': 'e.g., Python, JavaScript'})
+    )
     favorite_path = forms.MultipleChoiceField(
         choices=[
             ('Mobile Development', 'Mobile Development'),
@@ -12,7 +17,7 @@ class RegistrationForm(UserCreationForm):
             ('Data Science', 'Data Science')
         ],
         widget=forms.CheckboxSelectMultiple,
-        required=True
+        required=False
     )
     preferred_learning_style = forms.MultipleChoiceField(
         choices=[
@@ -21,9 +26,41 @@ class RegistrationForm(UserCreationForm):
             ('Kinesthetic', 'Kinesthetic')
         ],
         widget=forms.CheckboxSelectMultiple,
-        required=True
+        required=False
     )
-
+    participate_in_events = forms.ChoiceField(
+        choices=User.Participation.choices,
+        widget=forms.RadioSelect,
+        required=True,
+        label="Do you participate in campus events or activities?",
+        initial=User.Participation.NO
+    )
+    receive_recommendations = forms.ChoiceField(
+        choices=User.Participation.choices,
+        widget=forms.RadioSelect,
+        required=True,
+        label="Would you like to receive recommendations for relevant events or activities?",
+        initial=User.Participation.NO
+    )
+    study_preference = forms.ChoiceField(
+        choices=User.StudyPreference.choices,
+        widget=forms.RadioSelect,
+        required=True,
+        label="Do you prefer group study or solo study?",
+        initial=User.StudyPreference.SOLO
+    )
+    important_features = forms.MultipleChoiceField(
+        choices=[
+            ('Upcoming deadlines', 'Upcoming deadlines'),
+            ('Course materials', 'Course materials'),
+            ('Study groups', 'Study groups'),
+            ('Event recommendations', 'Event recommendations'),
+            ('Campus resources', 'Campus resources'),
+            ('Messages', 'Messages')
+        ],
+        widget=forms.CheckboxSelectMultiple,
+        required=False
+    )
     most_used_tool = forms.MultipleChoiceField(
         choices=[
             ('VS Code', 'VS Code'),
@@ -33,7 +70,7 @@ class RegistrationForm(UserCreationForm):
             ('Pycharm', 'Pycharm')
         ],
         widget=forms.CheckboxSelectMultiple,
-        required=True
+        required=False
     )
     class Meta(UserCreationForm.Meta):
         model = User
