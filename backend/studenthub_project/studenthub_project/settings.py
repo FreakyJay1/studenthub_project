@@ -76,6 +76,11 @@ DATABASES = {
 MONGO_URI = config('DATABASE_URL')
 MONGO_DATABASE_NAME = 'student_data'
 
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'core.backends.EmailBackend',
+]
+
 # Password validation (optional, but recommended)
 AUTH_PASSWORD_VALIDATORS = [
     {

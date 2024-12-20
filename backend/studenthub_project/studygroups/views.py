@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Api view to create a new study group.
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def create_study_group(request):
+def create_study_group_view(request):
     name = request.data.get('name')
     description = request.data.get('description')
     member_emails = request.data.get('member_emails')
@@ -171,17 +171,16 @@ def get_study_groups_for_user_view(request, user_id):
 
 # swagger
 @swagger_auto_schema(
-    method='post',
-    operation_summary="Remove user from study group",
-    operation_description="Removes a user from a specific study group.",
+    method='get',
+    operation_summary="Recommend study partners",
+    operation_description="Recommends potential study partners for a given user.",
     manual_parameters=[
-        openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the study group", type=openapi.TYPE_STRING, required=True),
-        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user to remove", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user for whom to recommend partners", type=openapi.TYPE_STRING, required=True),
     ],
     responses={
-        status.HTTP_200_OK: "User removed from study group",
-        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_200_OK: UserSerializer(many=True),
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_403_FORBIDDEN: "Forbidden",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
 )
@@ -202,14 +201,15 @@ def recommend_study_partners_view(request, user_id):
 
 # swagger
 @swagger_auto_schema(
-    method='delete',
-    operation_summary="Delete study group",
-    operation_description="Deletes a specific study group.",
+    method='post',
+    operation_summary="Remove user from study group",
+    operation_description="Removes a user from a specific study group.",
     manual_parameters=[
-        openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the study group to delete", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the study group", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user to remove", type=openapi.TYPE_STRING, required=True),
     ],
     responses={
-        status.HTTP_200_OK: "Study group deleted",
+        status.HTTP_200_OK: "User removed from study group",
         status.HTTP_400_BAD_REQUEST: "Bad Request",
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
@@ -232,16 +232,16 @@ def remove_user_from_study_group_view(request, group_id, user_id):
 
 # swagger
 @swagger_auto_schema(
-    method='get',
-    operation_summary="Recommend study partners",
-    operation_description="Recommends potential study partners for a given user.",
+    method='delete',
+    operation_summary="Delete study group",
+    operation_description="Deletes a specific study group.",
     manual_parameters=[
-        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user for whom to recommend partners", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the study group to delete", type=openapi.TYPE_STRING, required=True),
     ],
     responses={
-        status.HTTP_200_OK: UserSerializer(many=True),
+        status.HTTP_200_OK: "Study group deleted",
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
-        status.HTTP_403_FORBIDDEN: "Forbidden",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
 )
