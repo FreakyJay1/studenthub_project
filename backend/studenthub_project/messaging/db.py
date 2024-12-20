@@ -3,6 +3,9 @@ from django.conf import settings
 from bson.objectid import ObjectId
 from datetime import datetime
 from pymongo.errors import PyMongoError
+import logging
+
+logger = logging.getLogger(__name__)
 
 client = MongoClient(settings.MONGO_URI)
 db = client[settings.MONGO_DATABASE_NAME]
@@ -33,7 +36,7 @@ def create_message(sender_id,receiver_id, content):
         result = messages_collection.insert_one(message)
         return str(result.inserted_id)
     except PyMongoError as e:
-        print(f"Error creating message: {e}")
+        logger.error(f"Error creating message: {e}")
         return None
 
 # Retrieves messages between two user in the database.
@@ -42,6 +45,7 @@ def get_messages_between_users(user_id1, user_id2):
     user_oid1 = ObjectId(user_id1)
     user_oid2 = ObjectId(user_id2)
     if not user_oid1 or not user_oid2:
+        logger.warning(f"Invalid user ID format: user_id1={user_id1}, user_id2={user_id2}")
         return []
     try:
         messages = list(messages_collection.find({
@@ -52,7 +56,7 @@ def get_messages_between_users(user_id1, user_id2):
         }).sort("timestamp", 1))
         return messages
     except PyMongoError as e:
-        print(f"Error retrieving messages: {e}")
+        logger.error(f"Error retrieving messages: {e}")
         return []
 
 # Retrieves all messages sent or received by a specific user in the database.
@@ -60,6 +64,7 @@ def get_all_messages_for_user(user_id):
     messages_collection = db["messages"]
     user_oid = ObjectId(user_id)
     if not user_oid:
+        logger.warning(f"Invalid user ID format: {user_id}")
         return []
     try:
         return list(messages_collection.find({
@@ -69,7 +74,7 @@ def get_all_messages_for_user(user_id):
             ]
         }).sort("timestamp", 1))
     except PyMongoError as e:
-        print(f"Error retrieving messages for user: {e}")
+        logger.error(f"Error retrieving messages for user: {e}")
         return []
     
 # Retrieves all unread messages for specific user in the database.
@@ -77,6 +82,7 @@ def get_unread_messges(user_id):
     messages_collection = db["messages"]
     user_oid = ObjectId(user_id)
     if not user_oid:
+        logger.warning(f"Invalid user ID format: {user_id}")
         return []
     try:
         return list(messages_collection.find({
@@ -84,7 +90,7 @@ def get_unread_messges(user_id):
             "read": False
         }).sort("timestamp", 1))
     except PyMongoError as e:
-        print(f"Error retrieving unread messages: {e}")
+        logger.error(f"Error retrieving unread messages: {e}")
         return []
 
 # Marks the specific message as read.
@@ -92,6 +98,7 @@ def mark_message_as_read(message_id):
     messages_collection = db["messages"]
     message_oid = _get_object_id(message_id)
     if not message_oid:
+        logger.warning(f"Invalid message ID format: {message_id}")
         return False
     try:
         result = messages_collection.update_one(
@@ -100,7 +107,7 @@ def mark_message_as_read(message_id):
         )
         return result.modified_count > 0
     except PyMongoError as e:
-        print(f"Error marking message as read: {e}")
+        logger.error(f"Error marking message as read: {e}")
         return False
 
 # Marks all messages for the user as read.
@@ -108,6 +115,7 @@ def mark_all_messages_as_read(user_id):
     messages_collection = db["messages"]
     user_oid = ObjectId(user_id)
     if not user_oid:
+        logger.warning(f"Invalid user ID format: {user_id}")
         return 0
     try:
         result = messages_collection.update_many(
@@ -116,7 +124,7 @@ def mark_all_messages_as_read(user_id):
         )
         return result.modified_count
     except PyMongoError as e:
-        print(f"Error marking all messages as read: {e}")
+        logger.error(f"Error marking all messages as read: {e}")
         return 0
 
 # Group Conversation Functions.
@@ -126,15 +134,20 @@ def create_group_conversation(group_name, member_ids):
     conversations_collection = db["group_conversations"]
     try:
         group_members = [ObjectId(member_id) for member_id in member_ids]
-        conversation = {
-            "group_name": group_name,
-            "members": group_members,
-            "created_at": datetime.now()
-        }
+    except Exception as e:
+        logger.error(f"Error converting member_ids to ObjectIds: {e}")
+        return None
+
+    conversation = {
+        "group_name": group_name,
+        "members": group_members,
+        "created_at": datetime.now()
+    }
+    try:
         result = conversations_collection.insert_one(conversation)
         return str(result.inserted_id)
     except PyMongoError as e:
-        print(f"Error creating group conversation: {e}")
+        logger.error(f"Error creating group conversation: {e}")
         return None
     
 # Adding a new message to the group conversation.
@@ -151,7 +164,7 @@ def add_message_to_group_conversation(group_id, sender_id, content):
         result = messages_collection.insert_one(message)
         return str(result.inserted_id)
     except PyMongoError as e:
-        print(f"Error adding message to group: {e}")
+        logger.error(f"Error adding message to group: {e}")
         return None
 
 # Retrieves all messages for that specific group conversation.
@@ -159,11 +172,12 @@ def get_messages_for_group_conversation(group_id):
     messages_collection = db["group_messages"]
     group_oid = ObjectId(group_id)
     if not group_oid:
+        logger.warning(f"Invalid group ID format: {group_id}")
         return []
     try:
         return list(messages_collection.find({"group_id": group_oid}).sort("timestamp", 1))
     except PyMongoError as e:
-        print(f"Error getting group messages: {e}")
+        logger.error(f"Error getting group messages: {e}")
         return []
 
 # Retrieves a group conversation by It's ID in the database.
@@ -171,11 +185,12 @@ def get_group_conversation(group_id):
     conversations_collection = db["group_conversations"]
     group_oid = _get_object_id(group_id)
     if not group_oid:
+        logger.warning(f"Invalid group ID format: {group_id}")
         return None
     try:
         return conversations_collection.find_one({"_id": group_oid})
     except PyMongoError as e:
-        print(f"Error retrieving group conversation: {e}")
+        logger.error(f"Error retrieving group conversation: {e}")
         return None
 
 # Adding a user to an existing group conversation.
@@ -184,6 +199,7 @@ def add_user_to_group_conversation(group_id,user_id):
     group_oid = _get_object_id(group_id)
     user_oid = _get_object_id(user_id)
     if not group_oid or not user_oid:
+        logger.warning(f"Invalid group ID or user ID format: group_id={group_id}, user_id={user_id}")
         return False
     try:
         result = conversations_collection.update_one(
@@ -192,7 +208,7 @@ def add_user_to_group_conversation(group_id,user_id):
         )
         return result.modified_count > 0
     except PyMongoError as e:
-        print(f"Error adding user to group: {e}")
+        logger.error(f"Error adding user to group: {e}")
         return False
 
 # Removes a user from that group conversation.
@@ -201,6 +217,7 @@ def remove_user_from_group_conversation(group_id, user_id):
     group_oid = _get_object_id(group_id)
     user_oid = _get_object_id(user_id)
     if not group_oid or not user_oid:
+        logger.warning(f"Invalid group ID or user ID format: group_id={group_id}, user_id={user_id}")
         return False
     try:
         result = conversations_collection.update_one(
@@ -209,7 +226,7 @@ def remove_user_from_group_conversation(group_id, user_id):
         )
         return result.modified_count > 0
     except PyMongoError as e:
-        print(f"Error removing user from group: {e}")
+        logger.error(f"Error removing user from group: {e}")
         return False
 
 # Retrieves all group conversation that a user is apart of.
@@ -217,11 +234,12 @@ def get_group_conversations_for_user(user_id):
     conversations_collection = db["group_conversations"]
     user_oid = _get_object_id(user_id)
     if not user_oid:
+        logger.warning(f"Invalid user ID format: {user_id}")
         return []
     try:
         return list(conversations_collection.find({"members": user_oid}))
     except PyMongoError as e:
-        print(f"Error retrieving group conversations for user: {e}")
+        logger.error(f"Error retrieving group conversations for user: {e}")
         return []
 
 # Marks a specfic group message as read by the user.
@@ -230,6 +248,7 @@ def mark_group_message_as_read(group_message_id, user_id):
     message_oid = _get_object_id(group_message_id)
     user_oid = _get_object_id(user_id)
     if not message_oid or not user_oid:
+        logger.warning(f"Invalid message ID or user ID format: group_message_id={group_message_id}, user_id={user_id}")
         return False
     try:
         result = messages_collection.update_one(
@@ -238,7 +257,7 @@ def mark_group_message_as_read(group_message_id, user_id):
         )
         return result.modified_count > 0
     except PyMongoError as e:
-        print(f"Error marking group message as read: {e}")
+        logger.error(f"Error marking group message as read: {e}")
         return False
 
 # Notification Functions
@@ -250,7 +269,7 @@ def create_notification(notification_data):
         result = notifications_collection.insert_one(notification_data)
         return str(result.inserted_id)
     except PyMongoError as e:
-        print(f"Error creating notification: {e}")
+        logger.error(f"Error creating notification: {e}")
         return None
 
 # Retrieves notifications for the user.
@@ -258,6 +277,7 @@ def get_notifications_for_user(user_id, read=None):
     notifications_collection = db["notifications"]
     user_oid = _get_object_id(user_id)
     if not user_oid:
+        logger.warning(f"Invalid user ID format: {user_id}")
         return []
     query = {"recipient_id": ObjectId(user_id)}
     if read is not None:
@@ -265,7 +285,7 @@ def get_notifications_for_user(user_id, read=None):
     try:
         return list(notifications_collection.find(query).sort("timestamp", -1))
     except PyMongoError as e:
-        print(f"Error retrieving notifications: {e}")
+        logger.error(f"Error retrieving notifications: {e}")
         return []
 
 # Marks a notification as read.
@@ -273,6 +293,7 @@ def mark_notification_as_read(notification_id):
     notifications_collection = db["notifications"]
     notification_oid = _get_object_id(notification_id)
     if not notification_oid:
+        logger.warning(f"Invalid notification ID format: {notification_id}")
         return False
     try:
         result = notifications_collection.update_one(
@@ -281,26 +302,5 @@ def mark_notification_as_read(notification_id):
         )
         return result.modified_count > 0
     except PyMongoError as e:
-        print(f"Error marking notification as read: {e}")
+        logger.error(f"Error marking notification as read: {e}")
         return False
-
-# To retrieves a user info from mongodb database by their ID.
-def get_user(user_id):
-    users_collection = db["users"]
-    user_oid = _get_object_id(user_id)
-    if not user_oid:
-        return None
-    try:
-        return users_collection.find_one({"_id": user_oid})
-    except PyMongoError as e:
-        print(f"Error retrieving user by ID: {e}")
-        return None
-
-# To retrieves a user info from mongodb database by thier email.
-def get_user_email(email):
-    users_collection = db["users"]
-    try:
-        return users_collection.find_one({"email": email})
-    except PyMongoError as e:
-        print(f"Error retrieving user by email: {e}")
-        return None

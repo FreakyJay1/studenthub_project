@@ -29,7 +29,8 @@ INSTALLED_APPS = [
     'resources',
     'studygroups',
     'messaging',
-    'channels'
+    'channels',
+    'drf_yasg',
     # 'django.contrib.migrations',
 ]
 
@@ -62,7 +63,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'studenthub_project.wsgi.application'
-
 ASGI_APPLICATION = 'studenthub_project.asgi.application'
 
 # Database (use dummy engine since you're using PyMongo directly)
@@ -154,3 +154,20 @@ LOGGING = {
         },
     },
 }
+# OpenAPI schema settings
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header'
+        }
+    }
+}
+# Celery settings
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379')  # Use REDIS_URL environment variable
+CELERY_RESULT_BACKEND = 'redis://localhost:6379'  # You can use a different backend if you prefer
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'

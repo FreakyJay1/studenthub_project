@@ -20,13 +20,13 @@ class MessageSerializer(serializers.Serializer):
     timestamp = serializers.DateTimeField()
     read = serializers.BooleanField(default=False)
     
-class GroupConversationalSerialize(serializers.Serializer):
+class GroupConversationSerializer(serializers.Serializer):
     _id = ObjectIdField(read_only=True)
     group_name = serializers.CharField()
     members = serializers.ListField(child=ObjectIdField())
     created_at = serializers.DateTimeField()
     
-class GroupMessageSerialize(serializers.Serializer):
+class GroupMessageSerializer(serializers.Serializer):
     _id = ObjectIdField(read_only=True)
     group_id = ObjectIdField()
     sender_id = ObjectIdField()
@@ -34,7 +34,7 @@ class GroupMessageSerialize(serializers.Serializer):
     timestamp = serializers.DateTimeField()
     read_by = serializers.ListField(child=ObjectIdField())
     
-class NotificationSerialize(serializers.Serializer):
+class NotificationSerializer(serializers.Serializer):
     _id = ObjectIdField(read_only=True)
     recipient_id = ObjectIdField()
     message = serializers.CharField()
