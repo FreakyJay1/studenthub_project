@@ -49,6 +49,7 @@ def create_study_group_view(request):
     name = request.data.get('name')
     description = request.data.get('description')
     member_emails = request.data.get('member_emails')
+    creator_id = str(request.user.id)
     if not name or not member_emails:
         return Response({"error": "Missing required fields: 'name' or 'member_emails.'"}, status=status.HTTP_400_BAD_REQUEST)
     if not hasattr(member_emails, '__iter__'):
@@ -61,7 +62,7 @@ def create_study_group_view(request):
         else:
             return Response({"error": f"User with email '{email}' not found"}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        group_id = create_study_group(name, description, member_ids)
+        group_id = create_study_group(name, description, member_ids, creator_id)
         return Response({"message": "Study group created", "group_id": group_id}, status=status.HTTP_201_CREATED)
     except Exception as e:
         logger.error(f"Error in create_study_group_view: {e}")
@@ -126,14 +127,19 @@ def get_study_group_view(request, group_id):
 @permission_classes([IsAuthenticated])
 def add_user_to_study_group_view(request, group_id):
     user_email = request.data.get('user_email')
+    admin_email = request.user.email 
     if not user_email:
         return Response({"error": "Missing required field: 'user_email'"}, status=status.HTTP_400_BAD_REQUEST)
+    admin = get_user_by_email(admin_email)
+    if not admin:
+        return Response({"error": f"Admin user with email '{admin_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
     user = get_user_by_email(user_email)
     if not user:
         return Response({"error": f"User with email '{user_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
     user_id = str(user["_id"])
+    admin_id = str(admin["_id"])
     try:
-        success = add_user_to_study_group(group_id, user_id)
+        success = add_user_to_study_group(group_id, user_id, admin_id)
         if success:
             return Response({"message": "User added to study group"})
         else:
@@ -220,8 +226,13 @@ def recommend_study_partners_view(request, user_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def remove_user_from_study_group_view(request, group_id, user_id):
+    admin_email = request.user.email
+    admin = get_user_by_email(admin_email)
+    if not admin:
+        return Response({"error": f"Admin user with email '{admin_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+    admin_id = str(admin["_id"])
     try:
-        success = remove_user_from_study_group(group_id, user_id)
+        success = remove_user_from_study_group(group_id, user_id, admin_id)
         if success:
             return Response({"message": "User removed from study group"}, status=status.HTTP_200_OK)
         else:

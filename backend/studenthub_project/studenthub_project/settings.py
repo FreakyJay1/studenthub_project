@@ -169,9 +169,21 @@ SWAGGER_SETTINGS = {
         }
     }
 }
+
+# CACHES settings
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.environ.get('REDIS_URL', 'redis://localhost:6379/0'),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "IGNORE_EXCEPTIONS": True,
+        }
+    }
+}
 # Celery settings
-CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379')  # Use REDIS_URL environment variable
-CELERY_RESULT_BACKEND = 'redis://localhost:6379'  # You can use a different backend if you prefer
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379')
+CELERY_RESULT_BACKEND = 'redis://localhost:6379'
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

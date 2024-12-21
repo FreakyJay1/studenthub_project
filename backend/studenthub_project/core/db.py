@@ -1,13 +1,54 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 from django.conf import settings
 from bson.objectid import ObjectId
 from pymongo.errors import PyMongoError, DuplicateKeyError
+from django.core.cache import cache
 import logging
 
 logger = logging.getLogger(__name__)
 
 client = MongoClient(settings.MONGO_URI)
 db = client[settings.MONGO_DATABASE_NAME]
+
+# Database Indexes.
+# Adds missing indexes to MongoDB collections.
+def create_indexes():
+    # Indexes for user collection.
+    db.users.create_index([("email", ASCENDING)], unique=True)
+    db.users.create_index([("username", ASCENDING)], unique=True)
+    db.users.create_index([("favorite_path", ASCENDING)])
+    db.users.create_index([("preferred_learning_style", ASCENDING)])
+    db.users.create_index([("study_preference", ASCENDING)])
+    
+    # Indexes for messages collection.
+    db.messages.create_index([("sender_id", ASCENDING)])
+    db.messages.create_index([("receiver_id", ASCENDING)])
+    db.messages.create_index([("timestamp", DESCENDING)])
+    db.messages.create_index([("content", TEXT)])
+    
+    # Indexes for group_conversations collection.
+    db.group_conversations.create_index([("members", ASCENDING)])
+    db.group_conversations.create_index([("group_name", ASCENDING)])
+    
+    # Indexes for group_messages collection.
+    db.group_messages.create_index([("group_id", ASCENDING)])
+    db.group_messages.create_index([("sender_id", ASCENDING)])
+    db.group_messages.create_index([("timestamp", DESCENDING)])
+    db.group_messages.create_index([("content", TEXT)])
+    
+    # Indexes for notifications collection.
+    db.notifications.create_index([("recipient_id", ASCENDING)])
+    db.notifications.create_index([("is_read", ASCENDING)])
+    db.notifications.create_index([("timestamp", DESCENDING)])
+    
+    # Indexes for study groups collection.
+    db.study_groups.create_index([("members", ASCENDING)])
+    db.study_groups.create_index([("name", ASCENDING)])
+
+    logger.info("MongoDB indexes created or verified.")
+
+# Run create_indexes at startup to make sure indexes exist.
+create_indexes()
 
 # Helper Functions
 # Helper function to convert string ID to ObjectId, handling errors.
@@ -47,60 +88,80 @@ def create_user(user_data):
         logger.error(f"Error inserting user into Database: {e}")
         raise
 
-# To retrieves a user info from mongodb database by their ID.
+# To retrieves a user info from mongodb database by their ID with caching.
 def get_user(user_id):
     user_collection = db["users"]
     user_oid = _get_object_id(user_id)
     if not user_oid:
         return None
-    try:
-        return user_collection.find_one({"_id": user_oid})
-    except PyMongoError as e:
-        logger.error(f"Error retrieving user by ID: {e}")
-        return None
+    cache_key = f"user:{user_id}"
+    user = cache.get(cache_key)
+    if user is None:
+        try:
+            user = user_collection.find_one({"_id": user_oid})
+            if user:
+                cache.set(cache_key, user, timeout=300) 
+        except PyMongoError as e:
+            logger.error(f"Error retrieving user by ID: {e}")
+            return None
+    else:
+        logger.info(f"Retrieved user {user_id} from cache")
+    return user
 
-# To retrieves a user info from mongodb database by thier email.
+# To retrieves a user info from mongodb database by thier email with caching.
 def get_user_by_email(email):
     user_collection = db["users"]
-    try:
-        return user_collection.find_one({"email": email})
-    except PyMongoError as e:
-        logger.error(f"Error retrieving user by email: {e}")
-        return None
+    cache_key = f"user_email:{email}"
+    user = cache.get(cache_key)
+    if user is None:
+        try:
+            user = user_collection.find_one({"email": email})
+            if user:
+                cache.set(cache_key, user, timeout=300)
+        except PyMongoError as e:
+            logger.error(f"Error retrieving user by email: {e}")
+            return None
+    else:
+        logger.info(f"Retrieved user by email {email} from cache")
+    return user
     
-# Retrieves potential study partners for user base on multiple criteria.
+# Retrieves potential study partners with caching.
 def get_potential_study_partners(user_id, limit=10):
-    users_collection = db["users"]
-    user_oid = _get_object_id(user_id)
-    if not user_oid:
-        logger.warning(f"Invalid user ID format in get_potential_study_partners: {user_id}")
-        return []
-    current_user = users_collection.find_one({"_id": user_oid})
-    if not current_user:
-        logger.info(f"User not found with ID: {user_id}")
-        return []
-    criteria = {
-        "_id": {"$ne": user_oid},
-        "$or": [
-            {"favorite_path": {"$in": current_user.get("favorite_path", [])}},
-            {"preferred_learning_style": {"$in": current_user.get("preferred_learning_style", [])}},
-            {"study_preference": current_user.get("study_preference")},
-            ]
-        }
-    try:
-        potential_partners = list(users_collection.find(criteria))
-        for partner in potential_partners:
-            score = 0
-            if partner.get("favorite_path") == current_user.get("favorite_path"):
-                score += 3
-            if partner.get("preferred_learning_style") == current_user.get("preferred_learning_style"):
-                score += 1
-            if partner.get("study_preference") == current_user.get("study_preference"):
-                score += 1
-            partner["compatibility_score"] = score
-        potential_partners.sort(key=lambda x: x.get("compatibility_score", 0), reverse=True)
-        return potential_partners[:limit]
-    except PyMongoError as e:
-        logger.error(f"Error in get_potential_study_partners: {e}")
-        return []
-    
+    cache_key = f"study_partners:{user_id}:{limit}"
+    partners = cache.get(cache_key)
+    if partners is None:
+        users_collection = db["users"]
+        user_oid = _get_object_id(user_id)
+        if not user_oid:
+            logger.warning(f"Invalid user ID format in get_potential_study_partners: {user_id}")
+            return []
+        current_user = users_collection.find_one({"_id": user_oid})
+        if not current_user:
+            logger.info(f"User not found with ID: {user_id}")
+            return []
+        criteria = {
+            "_id": {"$ne": user_oid},
+            "$or": [
+                {"favorite_path": {"$in": current_user.get("favorite_path", [])}},
+                {"preferred_learning_style": {"$in": current_user.get("preferred_learning_style", [])}},
+                {"study_preference": current_user.get("study_preference")},
+                ]
+            }
+        try:
+            potential_partners = list(users_collection.find(criteria))
+            for partner in potential_partners:
+                score = 0
+                if partner.get("favorite_path") == current_user.get("favorite_path"):
+                    score += 3
+                if partner.get("preferred_learning_style") == current_user.get("preferred_learning_style"):
+                    score += 1
+                if partner.get("study_preference") == current_user.get("study_preference"):
+                    score += 1
+                partner["compatibility_score"] = score
+            potential_partners.sort(key=lambda x: x.get("compatibility_score", 0), reverse=True)
+            partners =  potential_partners[:limit]
+            cache.set(cache_key, partners, timeout=180)
+        except PyMongoError as e:
+            logger.error(f"Error in get_potential_study_partners: {e}")
+            return []
+    return partners

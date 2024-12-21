@@ -1,7 +1,7 @@
 from urllib import response
 from django.shortcuts import redirect
 from django.contrib.auth import login, authenticate
-from django.http import JsonResponse
+from django.http import response
 from .db import create_user, get_user_by_email, get_potential_study_partners
 from .models import User
 from .forms import RegistrationForm
@@ -63,25 +63,17 @@ logger = logging.getLogger(__name__)
 )
 
 # Create your views here.
-
 @api_view(['POST'])
 def register_view(request):
     # Checks if the request method is POST
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON data"}, status=status.HTTP_400_BAD_REQUEST)
+        data = request.data
     
         # Use the form to validate the data.
         form = RegistrationForm(data)
         if not form.is_valid():
-            return JsonResponse(form.errors, status=status.HTTP_400_BAD_REQUEST)
+            return response(form.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if the email is already use in the database.
-        if get_user_by_email(data['email']):
-            return JsonResponse({"email": ["This email address is already in use."]}, status=status.HTTP_400_BAD_REQUEST)
-
         # Creating user in the database.
         try:
             user = User.objects.create_user(
@@ -94,7 +86,7 @@ def register_view(request):
             user.save()
         except Exception as e:
             logger.error(f"Error creating user in Django's auth system: {e}")
-            return JsonResponse({"error": "Failed to create user"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return response({"error": "Failed to create user"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # Storing additional user data in the database.
         user_data = {
@@ -115,18 +107,18 @@ def register_view(request):
             create_user(user_data)
         except Exception as e:
             logger.error(f"Error storing additional user data in MongoDB: {e}")
-            return JsonResponse({"error": "Failed to store user data"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return response({"error": "Failed to store user data"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # Authenticate and log in the user.
         user = authenticate(request, username=data['email'], password=data['password'])
         if user is not None:
             login(request, user)
-            return JsonResponse({"message": "User registered and logged in successfully", "redirect_url": "/dashboard/"}, status=status.HTTP_201_CREATED)
+            return response({"message": "User registered and logged in successfully", "redirect_url": "/dashboard/"}, status=status.HTTP_201_CREATED)
         else:
             logger.error("Failed to log in user after registration")
-            return JsonResponse({"error": "Failed to log in user"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return response({"error": "Failed to log in user"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
-        return JsonResponse({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 # swagger
 @swagger_auto_schema(
@@ -152,11 +144,8 @@ def register_view(request):
 def login_view(request):
     # Checks if the request method is POST
     if request.method != 'POST':
-        return JsonResponse({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON data"}, status=status.HTTP_400_BAD_REQUEST)
+        return response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    data = request.data
     
     # Handles the user authentication and login process.
     email = data.get('username')
@@ -164,9 +153,9 @@ def login_view(request):
     user = authenticate(request, username=email, password=password)
     if user is not None:
         login(request, user)
-        return JsonResponse({"message": "Login successful", "redirect_url": "/dashboard/"}, status=status.HTTP_200_OK)
+        return response({"message": "Login successful", "redirect_url": "/dashboard/"}, status=status.HTTP_200_OK)
     else:
-        return JsonResponse({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+        return response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
 # swagger
 @swagger_auto_schema(

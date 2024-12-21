@@ -2,7 +2,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from .db import get_messages_between_users, get_all_messages_for_user, create_group_conversation, get_messages_for_group_conversation, add_user_to_group_conversation, remove_user_from_group_conversation, get_notifications_for_user, get_group_conversation
+from core.db import get_user_by_email
+from .db import delete_group_conversation, get_messages_between_users, get_all_messages_for_user, create_group_conversation, get_messages_for_group_conversation, add_user_to_group_conversation, remove_user_from_group_conversation, get_notifications_for_user, get_group_conversation, search_group_messages_for_user, search_messages_for_user
 from .serializers import GroupMessageSerializer, MessageSerializer, NotificationSerializer, GroupConversationSerializer
 import logging
 from drf_yasg.utils import swagger_auto_schema
@@ -74,13 +75,13 @@ def get_all_messages_for_user_view(request, user_id):
     operation_description="Creates a new group conversation with the specified name and members.",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
-        required=['group_name', 'member_ids'],
+        required=['group_name', 'member_emails'],
         properties={
             'group_name': openapi.Schema(type=openapi.TYPE_STRING, description="Name of the group"),
-            'member_ids': openapi.Schema(
+            'member_emails': openapi.Schema(
                 type=openapi.TYPE_ARRAY,
                 items=openapi.Schema(type=openapi.TYPE_STRING),
-                description="List of user IDs to be added to the group"
+                description="List of user emails to be added to the group"
             ),
         },
     ),
@@ -95,20 +96,31 @@ def get_all_messages_for_user_view(request, user_id):
 # To create a group conversation.
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def create_group_conversation(request):
+def create_group_conversation_view(request):
     try:
         group_name = request.data.get('group_name')
-        member_ids = request.data.get('member_ids')
+        member_emails = request.data.get('member_emails')
         if not group_name or not member_ids:
             return Response({"error": "Missing 'group_name' or 'member_ids'"}, status=status.HTTP_400_BAD_REQUEST)
-        if not hasattr(member_ids, '__iter__'):
+        
+        # Handle member_ids as a list, even if it's a single ID or another iterable
+        if not hasattr(member_ids, '__iter__') and not isinstance(member_emails, str):
             try:
-                member_ids = list(member_ids)
+                member_ids = list(member_emails)
             except Exception:
                 return Response({"error": "Failed to convert 'member_ids' to a list"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            member_ids = [member_ids]
-        group_id = create_group_conversation(group_name, member_ids)
+            member_ids = [member_emails]
+        
+        member_ids = []
+        for email in member_emails:
+            user = get_user_by_email(email)
+            if user:
+                member_ids.append(str(user["_id"]))
+            else:
+                return Response({"error": f"User with email '{email}' not found"}, status=status.HTTP_400_BAD_REQUEST)
+        creater_id = str(request.user.id)
+        group_id = create_group_conversation(group_name, member_ids, creater_id)
         if group_id:
             return Response({"message": "Group conversation created", "group_id": group_id}, status=status.HTTP_201_CREATED)
         else:
@@ -148,15 +160,24 @@ def get_messages_for_group_conversation_view(request, group_id):
 @swagger_auto_schema(
     method='post',
     operation_summary="Add user to group conversation",
-    operation_description="Adds a user to an existing group conversation.",
+    operation_description="Adds a user to an existing group conversation, requires admin privileges.",
     manual_parameters=[
         openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the group conversation", type=openapi.TYPE_STRING, required=True),
-        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user to add", type=openapi.TYPE_STRING, required=True),
     ],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['user_email'],
+        properties={
+            'user_email': openapi.Schema(type=openapi.TYPE_STRING, description="Email of the user to add"),
+            'admin_email': openapi.Schema(type=openapi.TYPE_STRING, description="Email of the group admin"),
+        },
+    ),
     responses={
-        status.HTTP_200_OK: "OK",
+        status.HTTP_200_OK: "User added to group conversation",
         status.HTTP_400_BAD_REQUEST: "Bad Request",
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_403_FORBIDDEN: "Forbidden (not an admin)",
+        status.HTTP_404_NOT_FOUND: "User or group not found",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
 )
@@ -164,9 +185,24 @@ def get_messages_for_group_conversation_view(request, group_id):
 # Adding user to group conversation.
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def add_user_to_group_conversation_view(request, group_id, user_id):
+def add_user_to_group_conversation_view(request, group_id):
+    user_email = request.data.get('user_email')
+    admin_email = request.data.get('admin_email')
+    if not user_email or not admin_email:
+        return Response({"error": "Missing required field: 'user_email' or 'admin_email"}, status=status.HTTP_400_BAD_REQUEST)
+    admin = get_user_by_email(admin_email)
+    if not admin:
+        return Response({"error": f"Admin user with email '{admin_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+    group = get_group_conversation(group_id)
+    if not group or str(group.get('created_by')) != str(admin['_id']):
+        return Response({"error": "Unauthorized to add user to this group"}, status=status.HTTP_403_FORBIDDEN)
+    user = get_user_by_email(user_email)
+    if not user:
+        return Response({"error": f"User with email '{user_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+    user_id = str(user["_id"])
+    admin_id = str(admin["_id"])
     try:
-        success = add_user_to_group_conversation(group_id, user_id)
+        success = add_user_to_group_conversation(group_id, user_id, admin_id)
         if success:
             return Response({"message": "User added to group conversation"}, status=status.HTTP_200_OK)
         else:
@@ -179,15 +215,24 @@ def add_user_to_group_conversation_view(request, group_id, user_id):
 @swagger_auto_schema(
     method='post',
     operation_summary="Remove user from group conversation",
-    operation_description="Removes a user from a group conversation.",
+    operation_description="Removes a user from a group conversation, requires admin privileges.",
     manual_parameters=[
         openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the group conversation", type=openapi.TYPE_STRING, required=True),
         openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user to remove", type=openapi.TYPE_STRING, required=True),
     ],
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['admin_email'],
+        properties={
+            'admin_email': openapi.Schema(type=openapi.TYPE_STRING, description="Email of the group admin"),
+        },
+    ),
     responses={
-        status.HTTP_200_OK: "OK",
+        status.HTTP_200_OK: "User removed from group conversation",
         status.HTTP_400_BAD_REQUEST: "Bad Request",
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_403_FORBIDDEN: "Forbidden (not an admin)",
+        status.HTTP_404_NOT_FOUND: "User or group not found",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
 )
@@ -196,8 +241,18 @@ def add_user_to_group_conversation_view(request, group_id, user_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def remove_user_from_group_conversation_view(request, group_id, user_id):
+    admin_email = request.data.get('admin_email')
+    if not admin_email:
+        return Response({"error": "Missing required field: 'admin_email'"}, status=status.HTTP_400_BAD_REQUEST)
+    admin = get_user_by_email(admin_email)
+    if not admin:
+        return Response({"error": f"Admin user with email '{admin_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+    group = get_group_conversation(group_id)
+    if not group or str(group.get('created_by')) != str(admin['_id']):
+        return Response({"error": "Unauthorized to remove user from this group"}, status=status.HTTP_403_FORBIDDEN)
+    admin_id = str(admin["_id"])
     try:
-        success = remove_user_from_group_conversation(group_id, user_id)
+        success = remove_user_from_group_conversation(group_id, user_id, admin_id)
         if success:
             return Response({"message": "User removed from group conversation"}, status=status.HTTP_200_OK)
         else:
@@ -231,4 +286,99 @@ def get_notifications_for_user_view(request, user_id):
         return Response(serializer.data)
     except Exception as e:
         logger.error(f"Error in get_notifications_for_user_view: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+# Swagger
+@swagger_auto_schema(
+    method='delete',
+    operation_summary="Delete group conversation",
+    operation_description="Deletes a group conversation and all its messages by group ID.",
+    manual_parameters=[
+        openapi.Parameter('group_id', openapi.IN_PATH, description="ID of the group conversation to delete", type=openapi.TYPE_STRING, required=True),
+    ],
+    responses={
+        status.HTTP_204_NO_CONTENT: "Group conversation deleted successfully",
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_403_FORBIDDEN: "Forbidden",
+        status.HTTP_404_NOT_FOUND: "Group conversation not found",
+        status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
+    }
+)
+
+# Api view to delete a group conversation and all it is messages.
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_group_conversation_view(request, group_id):
+    try:
+        group = get_group_conversation(group_id)
+        if not group:
+            return Response({"error": "Group conversation not found"}, status=status.HTTP_404_NOT_FOUND)
+        if str(request.user.id) != str(group['created_by']):
+            return Response({"error": "Unauthorized to delete this group conversation"}, status=status.HTTP_403_FORBIDDEN)
+        success = delete_group_conversation(group_id)
+        if success:
+            return Response({"message": "Group conversation deleted"}, status=status.HTTP_204_NO_CONTENT)
+        else:
+            return Response({"error": "Failed to delete group conversation"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Error in delete_group_conversation_view: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Swagger
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Search messages for a user",
+    operation_description="Searches messages sent or received by a specific user for a query string.",
+    manual_parameters=[
+        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('query', openapi.IN_QUERY, description="Search query string", type=openapi.TYPE_STRING, required=True),
+    ],
+    responses={
+        status.HTTP_200_OK: MessageSerializer(many=True),
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+    }
+)
+
+# Api view for search messages in user view.
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_messages_for_user_view(request, user_id):
+    query_string = request.query_params.get('query', '')
+    try:
+        messages = search_messages_for_user(user_id, query_string)
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        logger.error(f"Error in search_messages_for_user_view: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+# Swagger
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Search group messages for a user",
+    operation_description="Searches group messages for a specific user for a query string.",
+    manual_parameters=[
+        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('query', openapi.IN_QUERY, description="Search query string", type=openapi.TYPE_STRING, required=True),
+    ],
+    responses={
+        status.HTTP_200_OK: GroupMessageSerializer(many=True),
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+    }
+)
+
+# Api view for search messages in user group messages.
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_group_messages_for_user_view(request, user_id):
+    query_string = request.query_params.get('query', '')
+    try:
+        messages = search_group_messages_for_user(user_id, query_string)
+        serializer = GroupMessageSerializer(messages, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        logger.error(f"Error in search_group_messages_for_user_view: {e}")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
