@@ -23,6 +23,7 @@ class User(AbstractUser):
     study_preference = models.CharField(_("would you like to receive recommendations for relevant events or activities?"),max_length=3,choices=Participation.choices,default=Participation.NO)
     important_features = models.JSONField(_("which of the following features are most important to you in the dashboard?"),default=list,blank=True,)
     most_used_tool = models.JSONField(_("what is your most used development tool or platform?"), default=list, blank=True)
+    recommended_courses = models.JSONField(_("recommended courses"), default=list, blank=True)
     
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = [

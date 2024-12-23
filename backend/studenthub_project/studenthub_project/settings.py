@@ -152,7 +152,22 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
-        '': {
+        'messaging.db': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'studygroups.db': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'courses.scraper': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        '': {  # Root logger
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
@@ -188,3 +203,8 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Web scraping configuration
+SCRAPE_CONFIG = {
+    'base_url': 'https://www.coursera.org/search?query=search_terms',
+}

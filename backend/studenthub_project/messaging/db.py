@@ -34,7 +34,12 @@ def create_message(sender_id,receiver_id, content):
             "read": False
         }
         result = messages_collection.insert_one(message)
-        return str(result.inserted_id)
+        message_id = str(result.inserted_id)
+        cache.delete(f"messages_for_user: {sender_id}")
+        cache.delete(f"message_for_user: {receiver_id}")
+        sorted_ids = sorted([sender_id, receiver_id])
+        cache.delete(f"message_between: {sorted_ids[0]}: {sorted_ids[1]}")
+        return message_id
     except PyMongoError as e:
         logger.error(f"Error creating message: {e}")
         return None
@@ -47,6 +52,7 @@ def get_messages_between_users(user_id1, user_id2):
     if not user_oid1 or not user_oid2:
         logger.warning(f"Invalid user ID format: user_id1={user_id1}, user_id2={user_id2}")
         return []
+    sorted_ids = sorted([user_id1, user_id2])
     cache_key = f"messages_between:{user_id1}:{user_id2}"
     messages = cache.get(cache_key)
     if messages is None:
@@ -57,7 +63,8 @@ def get_messages_between_users(user_id1, user_id2):
                     {"sender_id": user_oid2, "receiver_id": user_oid1}
                 ]
             }).sort("timestamp", 1))
-            return messages
+            cache.set(cache_key, messages, timeout=60)
+            logger.info(f"Fetched messages between users {user_id1} and {user_id2} from database")
         except PyMongoError as e:
             logger.error(f"Error retrieving messages: {e}")
             return []
@@ -76,12 +83,14 @@ def get_all_messages_for_user(user_id):
     messages = cache.get(cache_key)
     if messages is None:
         try:
-            return list(messages_collection.find({
+            messages = list(messages_collection.find({
                 "$or": [
                     {"sender_id": user_oid},
                     {"receiver_id": user_oid}
                 ]
             }).sort("timestamp", 1))
+            cache.set(cache_key, messages, timeout=60)
+            logger.info(f"Fetched all messages for user {user_id} from database")
         except PyMongoError as e:
             logger.error(f"Error retrieving messages for user: {e}")
             return []
@@ -96,14 +105,22 @@ def get_unread_messges(user_id):
     if not user_oid:
         logger.warning(f"Invalid user ID format: {user_id}")
         return []
-    try:
-        return list(messages_collection.find({
-            "receiver_id": user_oid,
-            "read": False
-        }).sort("timestamp", 1))
-    except PyMongoError as e:
-        logger.error(f"Error retrieving unread messages: {e}")
-        return []
+    cache_key = f"unread_messages:{user_id}"
+    unread_messages = cache.get(cache_key)
+    if unread_messages is None:
+        try:
+            unread_messages = list(messages_collection.find({
+                "receiver_id": user_oid,
+                "read": False
+            }).sort("timestamp", 1))
+            cache.set(cache_key, unread_messages, timeout=30)
+            logger.info(f"Fetched unread messages for user {user_id} from database")
+        except PyMongoError as e:
+            logger.error(f"Error retrieving unread messages: {e}")
+            return []
+    else:
+        logger.info(f"Retrieved unread messages for user {user_id} from cache")
+    return unread_messages
 
 # Marks the specific message as read.
 def mark_message_as_read(message_id):
@@ -140,6 +157,12 @@ def mark_all_messages_as_read(user_id):
             {"receiver_id": user_oid, "read": False},
             {"$set": {"read": True}}
         )
+        cache.delete(f"messages_for_user:{user_id}")
+        messages = messages_collection.find({"$or": [{"sender_id": user_oid}, {"receiver_id": user_oid}]})
+        for message in messages:
+            other_user_id = message['sender_id'] if message['receiver_id'] == user_oid else message['receiver_id']
+            sorted_ids = sorted([user_id, str(other_user_id)])
+            cache.delete(f"messages_between:{sorted_ids[0]}:{sorted_ids[1]}")
         return result.modified_count
     except PyMongoError as e:
         logger.error(f"Error marking all messages as read: {e}")
@@ -213,11 +236,12 @@ def get_group_conversation(group_id):
             group_conversation = conversations_collection.find_one({"_id": group_oid})
             if group_conversation:
                     cache.set(cache_key, group_conversation, timeout=120)
+                    logger.info(f"Fetched group conversation {group_id} from database")
         except PyMongoError as e:
             logger.error(f"Error retrieving group conversation: {e}")
             return None
     else:
-        logger.info(f"Retrieved group conversation from cache for key: {cache_key}")
+        logger.info(f"Retrieved group conversation {group_id} from cache")
     return group_conversation
 
 # Adding a user to an existing group conversation, requires admin_id of the creator.

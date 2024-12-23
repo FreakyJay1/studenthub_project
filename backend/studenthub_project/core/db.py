@@ -100,10 +100,15 @@ def get_user(user_id):
         try:
             user = user_collection.find_one({"_id": user_oid})
             if user:
-                cache.set(cache_key, user, timeout=300) 
+                logger.info(f"Fetched user {user_id} from database")
+                cache.set(cache_key, user, timeout=300)
+            else:
+                logger.info(f"User not found with ID: {user_id}")
+                return None
         except PyMongoError as e:
             logger.error(f"Error retrieving user by ID: {e}")
             return None
+        return user
     else:
         logger.info(f"Retrieved user {user_id} from cache")
     return user
@@ -117,10 +122,15 @@ def get_user_by_email(email):
         try:
             user = user_collection.find_one({"email": email})
             if user:
+                logger.info(f"Fetched user by email {email} from database")
                 cache.set(cache_key, user, timeout=300)
+            else:
+                logger.info(f"User not found with email: {email}")
+                return None
         except PyMongoError as e:
             logger.error(f"Error retrieving user by email: {e}")
             return None
+        return user
     else:
         logger.info(f"Retrieved user by email {email} from cache")
     return user
@@ -130,6 +140,7 @@ def get_potential_study_partners(user_id, limit=10):
     cache_key = f"study_partners:{user_id}:{limit}"
     partners = cache.get(cache_key)
     if partners is None:
+        logger.info(f"Fetching study partners for user {user_id} from database")
         users_collection = db["users"]
         user_oid = _get_object_id(user_id)
         if not user_oid:
@@ -164,4 +175,22 @@ def get_potential_study_partners(user_id, limit=10):
         except PyMongoError as e:
             logger.error(f"Error in get_potential_study_partners: {e}")
             return []
+    else:
+        logger.info(f"Retrieved study partners for user {user_id} from cache")
     return partners
+
+# Updates the recommended courses for a user.
+def update_user_recommended_courses(user_id, course_data):
+    users_collection = db["users"]
+    try:
+        user_oid = ObjectId(user_id)
+        users_collection.update_one(
+            {"_id": user_oid},
+            {"$set": {"recommended_courses": course_data}}
+        )
+        cache.delete(f"user:{user_id}")
+        logger.info(f"Updated recommended courses for user {user_id} and invalidated cache")
+        return True
+    except PyMongoError as e:
+        logger.error(f"Error updating recommended courses for user {user_id}: {e}")
+        return False

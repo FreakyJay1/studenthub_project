@@ -46,6 +46,9 @@ def create_study_group(name, description, member_ids, creator_id):
     except PyMongoError as e:
         logger.error(f"Error creating study group: {e}")
         return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while creating study group: {e}")
+        return None
     
 # Retrieves a study group by their ID with caching.
 def get_study_group(group_id):
@@ -63,6 +66,7 @@ def get_study_group(group_id):
         group = study_groups_collection.find_one({"_id": group_oid})
         if group:
             cache.set(cache_key, group, timeout=300)
+            logger.info(f"Fetched study group {group_id} from database")
             return group
         else:
             logger.info(f"Study group not found with ID: {group_id}")
