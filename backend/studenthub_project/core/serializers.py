@@ -1,7 +1,9 @@
 from rest_framework import serializers
+from resources.serializers import ResourceSerializer
 from .models import User
 
 class UserSerializer(serializers.ModelSerializer):
+    recommended_resources = ResourceSerializer(many=True, read_only=True)
     class Meta:
         model = User
         fields = [ 
@@ -15,7 +17,9 @@ class UserSerializer(serializers.ModelSerializer):
             'receive_recommendations',
             'study_preference',
             'important_features',
-            'most_used_tool'
+            'most_used_tool',
+            'recommended_courses',
+            'recommended_resources'
         ]
         read_only_fields = ('id',)
         

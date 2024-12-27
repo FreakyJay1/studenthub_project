@@ -66,6 +66,7 @@ WSGI_APPLICATION = 'studenthub_project.wsgi.application'
 ASGI_APPLICATION = 'studenthub_project.asgi.application'
 
 # Database (use dummy engine since you're using PyMongo directly)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.dummy'

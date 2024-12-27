@@ -2,7 +2,7 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-from .db import create_message, get_all_messages_for_user, get_messages_between_users, mark_message_as_read, get_group_conversation, get_messages_for_group_conversation, add_message_to_group_conversation
+from .db import create_message, get_all_messages_for_user, get_messages_between_users, mark_message_as_read, get_group_conversation, get_messages_for_group_conversation, add_message_to_group_conversation,share_resource_in_group,share_resource_in_message
 from core.db import get_user_by_email, get_user
 from .serializers import GroupMessageSerialize, MessageSerializer
 from datetime import datetime
@@ -73,6 +73,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_private_message(self, data):
         receiver_email = data['receiver_email']
         content = data['message']
+        resource_id = data.get('resource_id')
         receiver = get_user_by_email(receiver_email)
         if not receiver:
             await self.send(text_data=json.dumps({
@@ -81,10 +82,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
         receiver_id = str(receiver["_id"])
         sender_id = self.user_id
-        message_id =create_message(sender_id,receiver_id,content)
-        channel_layer = get_channel_layer()
+        message_id =create_message(sender_id,receiver_id,content,resource_id)
         # Send message to receiver using Celery task
-        send_private_message_task.delay(sender_id, receiver_id, content, message_id)
+        send_private_message_task.delay(sender_id, receiver_id, content, message_id,resource_id)
         # send confirmation to sender
         await self.send(text_data=json.dumps({
             'type': 'private_message',
@@ -94,7 +94,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'receiver_id': receiver_id,
                 'content': content,
                 'timestamp': datetime.now().isoformat(),
-                'read': False
+                'read': False,
+                'resource_id': resource_id
             }
         }))
     
@@ -102,6 +103,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_group_message(self, data):
         group_id = data['group_id']
         content = data['message']
+        resource_id = data.get('resource_id')
         sender_id = self.user_id
         group_info = get_group_conversation(group_id)
         if not group_info:
@@ -109,9 +111,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'error': 'Group not found'
             }))
             return
-        message_id = add_message_to_group_conversation(group_id, sender_id, content)
+        message_id = add_message_to_group_conversation(group_id, sender_id, content,resource_id)
         # Use a Celery task to send messages to group members
-        send_group_message_task.delay(group_id, message_id, sender_id, content)
+        send_group_message_task.delay(group_id, message_id, sender_id, content,resource_id)
         # Send confirmation to sender
         await self.send(text_data=json.dumps({
             'type': 'group_message',
@@ -121,7 +123,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'sender_id': sender_id,
                 'content': content,
                 'timestamp': datetime.now().isoformat(),
-                'read_by': []
+                'read_by': [],
+                'resource_id': resource_id
             }
         }))
     
@@ -144,11 +147,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         messages = get_all_messages_for_user(self.user_id)
         serialized_messages = []
         for message in messages:
+            message['_id'] = str(message['_id'])
+            if 'sender_id' in message:
+                message['sender_id'] = str(message['sender_id'])
+            if 'receiver_id' in message:
+                message['receiver_id'] = str(message['receiver_id'])
             if 'group_id' in message:
-                serialized_message = GroupMessageSerialize(message).data
-                serialized_message['type'] = 'group_message'
-            else:
-                serialized_message = MessageSerializer(message).data
-                serialized_message['type'] = 'private_message'
-            serialized_messages.append(serialized_message)
+                message['group_id'] = str(message['group_id'])
+            if 'read_by' in message:
+                message['read_by'] = [str(user_id) for user_id in message['read_by']]
+            if 'timestamp' in message:
+                message['timestamp'] = message['timestamp'].isoformat()
         await self.send(text_data=json.dumps({'initial_messages': serialized_messages}))

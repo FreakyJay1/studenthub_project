@@ -2,7 +2,8 @@ from urllib import response
 from django.shortcuts import redirect
 from django.contrib.auth import login, authenticate
 from django.http import response
-from .db import create_user, get_user_by_email, get_potential_study_partners
+from resources.serializers import ResourceSerializer
+from .db import create_user, get_recommended_resources, get_user_by_email, get_potential_study_partners
 from .models import User
 from .forms import RegistrationForm
 from rest_framework.decorators import api_view, permission_classes
@@ -17,7 +18,7 @@ from drf_yasg import openapi
 
 logger = logging.getLogger(__name__)
 
-# swagger
+# Swagger.
 @swagger_auto_schema(
     method='post',
     operation_description="Registers a new user.",
@@ -120,7 +121,7 @@ def register_view(request):
     else:
         return response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-# swagger
+# Swagger.
 @swagger_auto_schema(
     method='post',
     operation_description="Logs in an existing user.",
@@ -157,7 +158,7 @@ def login_view(request):
     else:
         return response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
-# swagger
+# Swagger.
 @swagger_auto_schema(
     method='get',
     operation_summary="Recommend study partners",
@@ -185,4 +186,34 @@ def recommend_study_partners_view(request, user_id):
         return response(serializer.data)
     except Exception as e:
         logger.error(f"Error in recommend_study_partners_view: {e}")
+        return response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Swagger.
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Get recommended resources for a user",
+    operation_description="Retrieves a list of recommended resources for a specific user.",
+    manual_parameters=[
+        openapi.Parameter('user_id', openapi.IN_PATH, description="ID of the user", type=openapi.TYPE_STRING, required=True),
+    ],
+    responses={
+        status.HTTP_200_OK: ResourceSerializer(many=True),
+        status.HTTP_403_FORBIDDEN: "Forbidden",
+        status.HTTP_404_NOT_FOUND: "User not found",
+        status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
+    }
+)
+
+# API view to get recommended resources for a user.
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_recommended_resources_view(request, user_id):
+    if str(request.user.id) != user_id:
+        return response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        recommended_resources = get_recommended_resources(user_id)
+        serializer = ResourceSerializer(recommended_resources, many=True)
+        return response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in get_recommended_resources_view for user {user_id}: {e}")
         return response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

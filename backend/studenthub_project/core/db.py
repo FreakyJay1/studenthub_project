@@ -4,6 +4,7 @@ from bson.objectid import ObjectId
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from django.core.cache import cache
 import logging
+from resources.db import get_resource
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,9 @@ def create_indexes():
     # Indexes for study groups collection.
     db.study_groups.create_index([("members", ASCENDING)])
     db.study_groups.create_index([("name", ASCENDING)])
+    
+    # Indexes for resources collection.
+    db.resources.create_index([("name", "text"), ("description", "text")])
 
     logger.info("MongoDB indexes created or verified.")
 
@@ -100,6 +104,9 @@ def get_user(user_id):
         try:
             user = user_collection.find_one({"_id": user_oid})
             if user:
+                user['_id'] = str(user['_id'])
+                if 'recommended_resources' in user:
+                    user['recommended_resources'] = [str(res_id) for res_id in user['recommended_resources']]
                 logger.info(f"Fetched user {user_id} from database")
                 cache.set(cache_key, user, timeout=300)
             else:
@@ -171,6 +178,8 @@ def get_potential_study_partners(user_id, limit=10):
                 partner["compatibility_score"] = score
             potential_partners.sort(key=lambda x: x.get("compatibility_score", 0), reverse=True)
             partners =  potential_partners[:limit]
+            for partner in partners:
+                partner["_id"] = str(partner["_id"])
             cache.set(cache_key, partners, timeout=180)
         except PyMongoError as e:
             logger.error(f"Error in get_potential_study_partners: {e}")
@@ -184,6 +193,8 @@ def update_user_recommended_courses(user_id, course_data):
     users_collection = db["users"]
     try:
         user_oid = ObjectId(user_id)
+        for course in course_data:
+            course['_id'] = str(course['_id'])
         users_collection.update_one(
             {"_id": user_oid},
             {"$set": {"recommended_courses": course_data}}
@@ -194,3 +205,23 @@ def update_user_recommended_courses(user_id, course_data):
     except PyMongoError as e:
         logger.error(f"Error updating recommended courses for user {user_id}: {e}")
         return False
+
+# Retrieves recommend resources for a user.
+def get_recommended_resources(user_id):
+    users_collection = db["users"]
+    user_oid = _get_object_id(user_id)
+    if not user_oid:
+        logger.warning(f"Invalid user ID format in get_recommended_resources: {user_id}")
+        return []
+    user = users_collection.find_one({"_id": user_oid})
+    if not user:
+        logger.info(f"User not found with ID: {user_id}")
+        return []
+    recommended_resource_ids = user.get("recommended_resources", [])
+    recommended_resources = []
+    for resource_id in recommended_resource_ids:
+        resource = get_resource(resource_id) 
+        if resource:
+            recommended_resources.append(resource)
+    return recommended_resources
+    

@@ -12,4 +12,6 @@ urlpatterns = [
     path('groups/<str:group_id>/remove/<str:user_id>/', views.remove_user_from_group_conversation_view, name='remove_user_from_group_conversation'),
     path('groups/<str:group_id>/delete/', views.delete_group_conversation_view, name='delete_group_conversation'),
     path('notifications/<str:user_id>/', views.get_notifications_for_user_view, name='get_notifications_for_user'),
+    path('messages/share_resource/private/', views.share_resource_private_view, name='share_resource_private'),
+    path('messages/share_resource/group/', views.share_resource_group_view, name='share_resource_group'),
 ]

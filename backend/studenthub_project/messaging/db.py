@@ -442,3 +442,39 @@ def search_group_messages_for_user(user_id, query_string):
     except PyMongoError as e:
         logger.error(f"Error searching group messages for user: {e}")
         return []
+
+# Shares a resource in a private message.
+def share_resource_in_message(sender_id, receiver_id, resource_id, message_content=""):
+    messages_collection = db["messages"]
+    try:
+        message = {
+            "sender_id": ObjectId(sender_id),
+            "receiver_id": ObjectId(receiver_id),
+            "content": message_content,
+            "resource_id": ObjectId(resource_id),
+            "timestamp": datetime.now(),
+            "read": False
+        }
+        result = messages_collection.insert_one(message)
+        return str(result.inserted_id)
+    except PyMongoError as e:
+        logger.error(f"Error sharing resource in private message: {e}")
+        return None
+
+# Shares a resource in a group message.
+def share_resource_in_group(group_id, sender_id, resource_id, message_content=""):
+    messages_collection = db["group_messages"]
+    try:
+        message = {
+            "group_id": ObjectId(group_id),
+            "sender_id": ObjectId(sender_id),
+            "content": message_content,
+            "resource_id": ObjectId(resource_id),  # Store resource ID
+            "timestamp": datetime.now(),
+            "read_by": []
+        }
+        result = messages_collection.insert_one(message)
+        return str(result.inserted_id)
+    except PyMongoError as e:
+        logger.error(f"Error sharing resource in group message: {e}")
+        return None

@@ -5,4 +5,5 @@ urlpatterns = [
     path('register/', views.register_view, name='register'),
     path('login/', views.login_view, name='login'),
     path('recommend-partners/<str:user_id>/', views.recommend_study_partners_view, name='recommend_study_partners'),
+    path('recommended-resources/<str:user_id>/', views.get_recommended_resources_view, name='get_recommended_resources'),
 ]

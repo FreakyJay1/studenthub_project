@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from core.db import get_user_by_email
-from .db import delete_group_conversation, get_messages_between_users, get_all_messages_for_user, create_group_conversation, get_messages_for_group_conversation, add_user_to_group_conversation, remove_user_from_group_conversation, get_notifications_for_user, get_group_conversation, search_group_messages_for_user, search_messages_for_user
+from .db import add_message_to_group_conversation, create_message, delete_group_conversation, get_messages_between_users, get_all_messages_for_user, create_group_conversation, get_messages_for_group_conversation, add_user_to_group_conversation, remove_user_from_group_conversation, get_notifications_for_user, get_group_conversation, search_group_messages_for_user, search_messages_for_user
 from .serializers import GroupMessageSerializer, MessageSerializer, NotificationSerializer, GroupConversationSerializer
 import logging
 from drf_yasg.utils import swagger_auto_schema
@@ -382,3 +382,82 @@ def search_group_messages_for_user_view(request, user_id):
     except Exception as e:
         logger.error(f"Error in search_group_messages_for_user_view: {e}")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+# Swagger.
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Share resource in private message",
+    operation_description="Shares a resource in a private message.",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['receiver_email', 'resource_id'],
+        properties={
+            'receiver_email': openapi.Schema(type=openapi.TYPE_STRING, description="Email of the receiver"),
+            'resource_id': openapi.Schema(type=openapi.TYPE_STRING, description="ID of the resource to share"),
+            'message_content': openapi.Schema(type=openapi.TYPE_STRING, description="Optional message content"),
+        },
+    ),
+    responses={
+        status.HTTP_200_OK: MessageSerializer,
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_404_NOT_FOUND: "Receiver not found",
+    }
+)
+
+# API view for to share resource in private chats.
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def share_resource_private_view(request):
+    sender_id = str(request.user.id)
+    receiver_email = request.data.get('receiver_email')
+    resource_id = request.data.get('resource_id')
+    message_content = request.data.get('message_content', "")
+    receiver = get_user_by_email(receiver_email)
+    if not receiver:
+        return Response({"error": "Receiver not found"}, status=status.HTTP_404_NOT_FOUND)
+    receiver_id = str(receiver["_id"])
+    message_id = create_message(sender_id, receiver_id, message_content, resource_id)
+    if message_id:
+        return Response({"message": "Resource shared successfully", "message_id": message_id}, status=status.HTTP_200_OK)
+    else:
+        return Response({"error": "Failed to share resource"}, status=status.HTTP_400_BAD_REQUEST)
+
+# Swagger.
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Share resource in group",
+    operation_description="Shares a resource in a group conversation.",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['group_id', 'resource_id'],
+        properties={
+            'group_id': openapi.Schema(type=openapi.TYPE_STRING, description="ID of the group conversation"),
+            'resource_id': openapi.Schema(type=openapi.TYPE_STRING, description="ID of the resource to share"),
+            'message_content': openapi.Schema(type=openapi.TYPE_STRING, description="Optional message content"),
+        },
+    ),
+    responses={
+        status.HTTP_200_OK: GroupMessageSerializer,
+        status.HTTP_400_BAD_REQUEST: "Bad Request",
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_404_NOT_FOUND: "Group not found",
+    }
+)
+
+# API view for to share resource in group chats.
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def share_resource_group_view(request):
+    sender_id = str(request.user.id)
+    group_id = request.data.get('group_id')
+    resource_id = request.data.get('resource_id')
+    message_content = request.data.get('message_content', "")
+    group_info = get_group_conversation(group_id)
+    if not group_info:
+        return Response({"error": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
+    message_id = add_message_to_group_conversation(group_id, sender_id, message_content, resource_id)
+    if message_id:
+        return Response({"message": "Resource shared in group", "message_id": message_id}, status=status.HTTP_200_OK)
+    else:
+        return Response({"error": "Failed to share resource in group"}, status=status.HTTP_400_BAD_REQUEST)

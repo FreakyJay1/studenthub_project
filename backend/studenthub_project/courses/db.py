@@ -71,10 +71,17 @@ def recommend_courses_to_user(user_id):
         return False
     recommended_courses = []
     for course in courses_data:
+        course_id = course.get('_id')
+        if course_id and isinstance(course_id, ObjectId):
+            course['_id'] = str(course_id)
         if any(interest.lower() in course["title"].lower() for interest in user_interests):
             recommended_courses.append(course)
             continue
         if any(style.lower() in course.get("description", "").lower() for style in user_learning_style):
             recommended_courses.append(course)
     success = update_user_recommended_courses(user_id, recommended_courses)
+    if success:
+        logger.info(f"Recommended courses updated for user ID: {user_id}")
+    else:
+        logger.error(f"Failed to update recommended courses for user ID: {user_id}")
     return success
